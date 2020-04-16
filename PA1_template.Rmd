@@ -1,5 +1,6 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
+author: Jenny Eriksson
 output: 
   html_document:
     keep_md: true
@@ -7,19 +8,102 @@ output:
 
 
 ## Loading and preprocessing the data
-
+This section will load the data and transform the date feature to a date format.
+```{r}
+unzip("activity.zip")
+data<-read.csv('activity.csv')
+data<-transform(data, date=as.Date(date))
+```
 
 
 ## What is mean total number of steps taken per day?
+By aggregating the data by day we can get the total number of steps as shown in the table below.
 
+```{r, results="asis"}
+nSteps<-aggregate(steps~date, data=data, sum)
+library(xtable)
+xt<-xtable(transform(nSteps, date=as.character(date)))
+print(xt, type="html")
+```
+We can also make a histogram showing the freuquency of steps per day, see below.
+```{r}
+hist(nSteps$steps, main="Histogram: number of steps taken per day", xlab="number of steps [count]", ylab="frequency [days]", ylim=c(0,35))
 
+```
+
+The mean and median is computed as
+```{r}
+meanSteps <- format(round(mean(nSteps$steps),1), nsmall=1)
+medianSteps <- format(round(median(nSteps$steps),1),nsmall=1)
+
+```
+where we get a mean of `r meanSteps` steps/day and a median of `r medianSteps` steps/day.
 
 ## What is the average daily activity pattern?
-
+By instead aggregating on the interval we get the mean number of steps per interval, see the plot below.
+```{r}
+meanStepsInterval<-aggregate(steps~interval, data=data, mean)
+plot(meanStepsInterval$interval, meanStepsInterval$steps, type="l", main="Average number of steps per interval", xlab="interval", ylab="steps [count]") 
+```
+The maximum number of steps taken, as a mean, is
+```{r}
+idx<-which.max(meanStepsInterval$steps)
+maxStep<-format(round(meanStepsInterval$steps[idx],1),nsmall=1) 
+maxStepInterval<-meanStepsInterval$interval[idx]
+```
+`r maxStep` steps found at interval `r maxStepInterval`, which corresponds to the time 8.35AM.
 
 
 ## Imputing missing values
+In this data set there are some missing values, found as
+```{r}
+sum(is.na(data$steps))
+```
 
+In order to get a more accurate analysis of the data we will impute the missing values with the mean value of the corresponding interval, which has been computed earlier in `meanSteps`. The code snippet below will loop through all rows of `data` and create a new table, `dataImputed`, that will contain imputed values.
+```{r}
+dataImputed <- data
+for(i in 1:nrow(dataImputed))
+{
+    if(is.na(dataImputed$steps[i]))
+    {
+        replacementvalue <- meanStepsInterval[meanStepsInterval$interval==dataImputed$interval[i],2]
+        dataImputed$steps[i]<-replacementvalue
+    }
+}
+
+```
+The histogram of the new table is computed and shown belown. We see a higher frequency in the range 10 000-15 000 steps per day, which makes sense. Since this category is the most common one, it's probable that the replacement values for each interval will contribute most to this category.
+```{r}
+nStepsImputed<-aggregate(steps~date, data=dataImputed, sum)
+hist(nStepsImputed$steps, main="Histogram: number of steps taken per day, Imputed data", xlab="number of steps [count]", ylab="frequency [days]")
+
+```
+
+The mean and median is updated
+```{r}
+meanStepsImputed <- format(round(mean(nStepsImputed$steps),1), nsmall=1)
+medianStepsImputed <- format(round(median(nStepsImputed$steps),1),nsmall=1)
+
+```
+where we get the same mean as before `r meanStepsImputed`/day,which is explainable by the fact that we are replacing with mean values. The median is slightly higher, `r medianStepsImputed`/day. The explanation is that we replaced with mean values, which were higher than the (previous) median values, hence the median is increased.
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+To answer the question on how the activity changes over the week we will construct a new column, indicating whether it is the weekend or not, see code below.
+```{r}
+Sys.setlocale(category = "LC_ALL", locale = "english")
+dataImputed <- cbind(dataImputed, weekend=factor(weekdays(dataImputed$date) %in% c("Saturday", "Sunday"), labels = c("Weekday", "Weekend")))
+head(dataImputed)
+``` 
+
+We can now view the changes in activity by aggregating on weekend/weekday
+```{r}
+library(ggplot2)
+
+meanStepsIntervalImputed<-aggregate(steps~interval+weekend, data=dataImputed, mean)
+
+qplot(interval, steps, data=meanStepsIntervalImputed, col=weekend, geom="line", main="Average number of steps per interval", xlab="interval", ylab="steps [count]") 
+```
+ When comparing the activity we find that during the weekdays the person tend to walk more in the morning and less in the afternoon, compared to weekends.
+
